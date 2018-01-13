@@ -118,13 +118,49 @@ formUI <- function(formInfo) {
             }
             
             if (question$type == "text") {
-              input <- textInput(ns(question$id), NULL, "")
+              input <- textInput(ns(question$id), label = NULL, value = question$value, placeholder = question$placeholder, 
+                                 width = question$width)
             } else if (question$type == "numeric") {
-              input <- numericInput(ns(question$id), NULL, 0)
+              input <- numericInput(ns(question$id), label = NULL, value = question$value, min = question$min,
+                                    max = question$max, step = question$step, width = question$width)
             } else if (question$type == "checkbox") {
-              input <- checkboxInput(ns(question$id), label, FALSE)
+              input <- checkboxInput(ns(question$id), label, value = question$value, width = question$width)
+            } else if (question$type == "dateRange") {
+              input <- dateRangeInput(ns(question$id), label = NULL, start = question$start, end = question$end,
+                                      min = question$min, max = question$max, format = question$format, startview = question$startview,
+                                      weekstart = question$weekstart, language = question$language, width = question$width)
+            } else if (question$type == "date") {
+              input <- dateInput(ns(question$id), label = NULL, value = question$value,
+                                 min = question$min, max = question$max, format = question$format, startview = question$startview,
+                                 weekstart = question$weekstart, language = question$language, width = question$width)
+            } else if (question$type == "slider") {
+              input <- sliderInput(ns(question$id), label = NULL, min = question$min, max = question$max,
+                                   value = question$value, step = question$step, round = question$round,
+                                   ticks = question$ticks, animate = question$animate,
+                                   width = question$width, sep = question$sep, pre = question$pre, post = question$post,
+                                   timeFormat = question$timeFormat,
+                                   timezone = question$timezone, dragRange = question$dragRange)
+            } else if (question$type == "radio") {
+              input <- radioButtons(ns(question$id), choices = question$choices, NULL)
+            } else if (question$type == "select") {
+              input <- selectInput(ns(question$id), label = NULL, choices = question$choices, selected = question$selected,
+                                   multiple = question$multiple, selectize = question$selectize, width = question$width, 
+                                   size = question$size)
+            } else if (question$type == "checkboxGroup") {
+              input <- checkboxGroupInput(ns(question$id), label = NULL, choices = question$choices, selected =  question$selected,
+                                          inline = question$inline, width = question$width)
+            } 
+            textareaInput <- function(id, value, placeholder, title, label, width = NULL){
+              div(class = "form-group shiny-input-container",  style = if (!is.null(width)) 
+                paste0("width: ", validateCssUnit(width), ";"), tags$textarea(id = id, rows = 3, cols = 41, type = "textarea", value = value, 
+                                                                              placeholder = placeholder))
             }
-
+            
+            if (question$type == "textarea") {
+              input <- textareaInput(ns(question$id), value = question$value, placeholder = question$placeholder)
+            }
+            conditionalPanel(
+              condition = question$cond,
             div(
               class = "sf-question",
               if (question$type != "checkbox") {
@@ -138,7 +174,7 @@ formUI <- function(formInfo) {
                 )
               },
               input
-            )
+            ))
           }
         )
       ),
@@ -181,8 +217,8 @@ formUI <- function(formInfo) {
         actionButton(ns("submitPw"), "Log in")
       ),
       shinyjs::hidden(div(id = ns("showAnswers"),
-          downloadButton(ns("downloadBtn"), "Download responses"),
-          DT::dataTableOutput(ns("responsesTable"))
+                          downloadButton(ns("downloadBtn"), "Download responses"),
+                          DT::dataTableOutput(ns("responsesTable"))
       ))
     )),
     
@@ -234,7 +270,7 @@ formServerHelper <- function(input, output, session, formInfo) {
   
   # When the Submit button is clicked, submit the response
   observeEvent(input$submit, {
-
+    
     # User-experience stuff
     shinyjs::disable("submit")
     shinyjs::show("submit_msg")
@@ -243,7 +279,7 @@ formServerHelper <- function(input, output, session, formInfo) {
       shinyjs::enable("submit")
       shinyjs::hide("submit_msg")
     })
-
+    
     if (!is.null(formInfo$validations)) {
       errors <- unlist(lapply(
         formInfo$validations, function(validation) {
@@ -326,7 +362,7 @@ formServerHelper <- function(input, output, session, formInfo) {
   observeEvent(input$showhide, {
     shinyjs::toggle("answers")
   })
-
+  
   observeEvent(input$submitPw, {
     if (input$adminpw == formInfo$password) {
       values$adminVerified <- TRUE
@@ -334,7 +370,7 @@ formServerHelper <- function(input, output, session, formInfo) {
       shinyjs::hide("pw-box")
     }
   })
-
+  
   # Allow admins to download responses
   output$downloadBtn <- downloadHandler(
     filename = function() {
