@@ -8,8 +8,7 @@ STORAGE_TYPES <- list(
   MONGO = "mongo",
   GOOGLE_SHEETS = "gsheets",
   DROPBOX = "dropbox",
-  AMAZON_S3 = "s3",
-  ROBJ = "robj" # export a simple r object file 
+  AMAZON_S3 = "s3"
 )
 
 labelMandatory <- function(label) {
@@ -39,11 +38,8 @@ saveData <- function(data, storage) {
     saveDataFlatfile(data, storage)
   } else if (storage$type == STORAGE_TYPES$GOOGLE_SHEETS) {
     saveDataGsheets(data, storage)
-  } else if (storage$type == STORAGE_TYPES$ROBJ){
-    saveDataRobj(data, storage)
   }
 }
-
 
 loadData <- function(storage) {
   if (storage$type == STORAGE_TYPES$FLATFILE) {
@@ -68,24 +64,6 @@ saveDataFlatfile <- function(data, storage) {
   write.csv(x = data, file = file.path(resultsDir, fileName),
             row.names = FALSE, quote = TRUE)
 }
-
-saveDataRobj <- function(data, storage) { #Write as R object
-  fileName <- paste0(
-    paste(
-      format(Sys.time(), "%Y%m%d-%H%M%OS"),
-      digest::digest(data, algo = "md5"),
-      sep = "_"
-    ),
-    ".R"
-  )
-  
-  resultsDir <- storage$path
-  
-  # write out the results as R obj
-  save(data, file = file.path(resultsDir, fileName),
-            row.names = FALSE, quote = TRUE)
-}
-
 loadDataFlatfile <- function(storage) {
   resultsDir <- storage$path
   files <- list.files(file.path(resultsDir), full.names = TRUE)
@@ -94,7 +72,6 @@ loadDataFlatfile <- function(storage) {
   
   data
 }
-
 saveDataGsheets <- function(data, storage) {
   gs_add_row(gs_key(storage$key), input = data)
 }
@@ -109,22 +86,24 @@ formUI <- function(formInfo) {
   
   questions <- formInfo$questions
   
-  fieldsMandatory <- Filter(function(x) { !is.null(x$mandatory) && x$mandatory }, questions)
-  fieldsMandatory <- unlist(lapply(fieldsMandatory, function(x) { x$id }))
+  fieldsMandatory <- Filter(function(x) { !is.null(x$mandatory) && x$mandatory }, questions) 
+  fieldsMandatory <- unlist(lapply(fieldsMandatory, function(x) { x$id })) # This check which fields IDs are mandatory
   
-  titleElement <- NULL
+  titleElement <- NULL  # Provide a Title in case there is one 
   if (!is.null(formInfo$name)) {
     titleElement <- h2(formInfo$name)
   }
   
+  # Provide a response text after submitting the Answers
   responseText <- "Thank you, your response was submitted successfully."
   if (!is.null(formInfo$responseText)) {
     responseText <- formInfo$responseText
   }
   
+  #Here come the questions
   div(
-    shinyjs::useShinyjs(),
-    shinyjs::inlineCSS(appCSS),
+    shinyjs::useShinyjs(), # Questionable use of shinyjs
+    shinyjs::inlineCSS(appCSS), # USe the formatting 
     class = "shinyforms-ui",
     div(
       id = ns("form"),
@@ -163,7 +142,7 @@ formUI <- function(formInfo) {
                                    timeFormat = question$timeFormat,
                                    timezone = question$timezone, dragRange = question$dragRange)
             } else if (question$type == "radio") {
-              input <- radioButtons(ns(question$id), choices = question$choices, inline = question$inline, NULL)
+              input <- radioButtons(ns(question$id), choices = question$choices, NULL)
             } else if (question$type == "select") {
               input <- selectInput(ns(question$id), label = NULL, choices = question$choices, selected = question$selected,
                                    multiple = question$multiple, selectize = question$selectize, width = question$width, 
@@ -181,22 +160,40 @@ formUI <- function(formInfo) {
             if (question$type == "textarea") {
               input <- textareaInput(ns(question$id), value = question$value, placeholder = question$placeholder)
             }
-            conditionalPanel(
-              condition = question$cond,
-            div(
-              class = "sf-question",
-              if (question$type != "checkbox") {
-                tags$label(
-                  `for` = ns(question$id),
-                  class = "sf-input-label",
-                  label,
-                  if (!is.null(question$hint)) {
-                    div(class = "question-hint", question$hint)
-                  }
+            #hide this !!
+            if (!is.null(question$dependsOn)){
+              shinyjs::hidden(
+                div(
+                  class = "sf-question",
+                  if (question$type != "checkbox") {
+                    tags$label(
+                      `for` = ns(question$id),
+                      class = "sf-input-label",
+                      label,
+                      if (!is.null(question$hint)) {
+                        div(class = "question-hint", question$hint)
+                      }
+                    )
+                  },
+                  input
                 )
-              },
-              input
-            ))
+              )} else {
+                div(
+                  class = "sf-question",
+                  if (question$type != "checkbox") {
+                    tags$label(
+                      `for` = ns(question$id),
+                      class = "sf-input-label",
+                      label,
+                      if (!is.null(question$hint)) {
+                        div(class = "question-hint", question$hint)
+                      }
+                    )
+                  },
+                  input
+                )
+              }
+            
           }
         )
       ),
@@ -239,8 +236,8 @@ formUI <- function(formInfo) {
         actionButton(ns("submitPw"), "Log in")
       ),
       shinyjs::hidden(div(id = ns("showAnswers"),
-                          downloadButton(ns("downloadBtn"), "Download responses"),
-                          DT::dataTableOutput(ns("responsesTable"))
+          downloadButton(ns("downloadBtn"), "Download responses"),
+          DT::dataTableOutput(ns("responsesTable"))
       ))
     )),
     
@@ -285,6 +282,35 @@ formServerHelper <- function(input, output, session, formInfo) {
     shinyjs::toggleState(id = "submit", condition = mandatoryFilled)
   })
   
+  # Check which inputs depend on something else
+  fieldsConditional <- Filter(function(x) {!is.null(x$dependsOn) }, questions)
+
+  lapply(fieldsConditional,function(x){
+    observe({
+      if (!is.null(input[[x$dependsOn]]) && input[[x$dependsOn]]==x$needs){
+        shinyjs::show(id = x$id, anim = TRUE)
+        print(paste0("dependson:",x$dependsOn," needs: ","x$needs"))
+      } else {
+        shinyjs::hide(id = x$id, anim = TRUE)
+      }
+    })
+  })
+  
+  
+  # fieldsConditional <- unlist(lapply(fieldsConditional, function(x) { x$id}))
+
+  # observe({
+  #   checkConditionals <-
+  #     sapply(fieldsConditional,
+  #            function(x) {
+  #              !is.null(input[[x]]) && input[[x]] != ""
+  #            },
+  #            logical(1))
+  #   mandatoryFilled <- all(mandatoryFilled)
+  # })
+
+  
+  
   observeEvent(input$reset, {
     shinyjs::reset("form")
     shinyjs::hide("error")
@@ -292,7 +318,7 @@ formServerHelper <- function(input, output, session, formInfo) {
   
   # When the Submit button is clicked, submit the response
   observeEvent(input$submit, {
-    
+
     # User-experience stuff
     shinyjs::disable("submit")
     shinyjs::show("submit_msg")
@@ -301,7 +327,7 @@ formServerHelper <- function(input, output, session, formInfo) {
       shinyjs::enable("submit")
       shinyjs::hide("submit_msg")
     })
-    
+
     if (!is.null(formInfo$validations)) {
       errors <- unlist(lapply(
         formInfo$validations, function(validation) {
@@ -384,7 +410,7 @@ formServerHelper <- function(input, output, session, formInfo) {
   observeEvent(input$showhide, {
     shinyjs::toggle("answers")
   })
-  
+
   observeEvent(input$submitPw, {
     if (input$adminpw == formInfo$password) {
       values$adminVerified <- TRUE
@@ -392,7 +418,7 @@ formServerHelper <- function(input, output, session, formInfo) {
       shinyjs::hide("pw-box")
     }
   })
-  
+
   # Allow admins to download responses
   output$downloadBtn <- downloadHandler(
     filename = function() {
@@ -418,3 +444,5 @@ inlineInput <- function(tag) {
   stopifnot(inherits(tag, "shiny.tag"))
   tagAppendAttributes(tag, style = "display: inline-block;")
 }
+
+
