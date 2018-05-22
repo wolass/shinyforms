@@ -9,7 +9,8 @@ STORAGE_TYPES <- list(
   GOOGLE_SHEETS = "gsheets",
   DROPBOX = "dropbox",
   AMAZON_S3 = "s3",
-  ROBJ = "robj" # export a simple r object file 
+  ROBJ = "robj", # export a simple r object file 
+  CONCAT = "concat"
 )
 
 labelMandatory <- function(label) {
@@ -41,6 +42,13 @@ saveData <- function(data, storage) {
     saveDataGsheets(data, storage)
   } else if (storage$type == STORAGE_TYPES$ROBJ){
     saveDataRobj(data, storage)
+  } else if (storage$type == STORAGE_TYPES$CONCAT){
+    write.table(data, 
+                paste0(storage$path), 
+                sep = ",", 
+                col.names = ifelse(file.exists(storage$path),F,T),
+                row.names = F, 
+                append = T)
   }
 }
 
